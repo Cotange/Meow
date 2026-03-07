@@ -242,27 +242,52 @@ def hexagon(coord0):
 
     return list_of_coords
 
+def count_c_neighbors(atom, atom_list):
+    count = 0
+    for other in atom_list:
+        if other.atom_number == atom.atom_number:
+            continue
+        if other.atom_name not in ['CX', 'CY', 'CZ']:
+            continue
+        dist = calculate_3D_distance_2_atoms(atom, other)
+        if 1.42 - 0.1 <= dist <= 1.42 + 0.1:
+            count += 1
+    return count
 
-# -----------------------------------------------------------
-# Добавление водородов по краям графена с учётом чётности OH-групп на внутренних атомах
-# -----------------------------------------------------------
+def has_hydrogen_neighbor(atom, atom_list):
+    bonds = identify_bonds(atom, atom_list)
+    return any(b[0].atom_name == 'H' for b in bonds)
 
 def add_edge_hydrogens(atom_list):
     """
-    Добавляет атомы водорода к краевым атомам углерода (CX), не связанным с функциональными группами.
+    Добавляет атомы водорода к краевым атомам углерода:
+    - не связанным с функциональными группами (остаток GGG),
+    - связанным только с эпоксидной группой (остаток E1A, атомы CY или CZ).
     Если указан filename, сохраняет обновлённый PDB-файл.
     Возвращает обновлённый список атомов.
     """
     global bond_list
     bond_list = bond_list_1 + bond_list_3 
 
-    edge_atoms = get_map_edge(atom_list)
+    candidates = []
+    for atom in atom_list:
+        if atom.atom_name not in ['CX', 'CY', 'CZ']:
+            continue
+        if count_c_neighbors(atom, atom_list) not in [1, 2]:
+            continue
+        if atom.residue_name == 'GGG':
+            candidates.append(atom)
+        elif atom.residue_name == 'E1A' and atom.atom_name in ['CY', 'CZ']:
+            candidates.append(atom)
 
     new_atoms = []
-    for atom in edge_atoms:
+    for atom in candidates:
+        if has_hydrogen_neighbor(atom, atom_list + new_atoms):
+            continue
+
         nearby = detect_neighbours_hydrogen(atom, atom_list + new_atoms)
         centers = [[a.x, a.y, a.z] for a in nearby]
-        radii = compose_listofr('H', nearby)
+        radii = compose_listofr('H', nearby) 
         points_x, points_y, points_z = fix_sphere_m(atom.x, atom.y, atom.z, 1.09, centers, radii, 1500)
         if not points_x:
             continue
@@ -515,19 +540,7 @@ def create_GO(init_file, no_COOH, no_epoxy, no_OH, filename1):
 #MY PART'S START
 
     
-    def count_c_neighbors(atom):
-        count = 0
-        for other in atoms:
-            if other.atom_number == atom.atom_number:
-                continue
-            if other.atom_name not in ['CX', 'CY']:
-                continue
-            dist = calculate_3D_distance_2_atoms(atom, other)
-            if 1.42 - 0.1 <= dist <= 1.42 + 0.1:
-                count += 1
-        return count
-
-    internal_available = [atom for atom in anywhere_map if count_c_neighbors(atom) == 3]
+    internal_available = [atom for atom in anywhere_map if count_c_neighbors(atom, atoms) == 3]
    
     max_internal = len(internal_available)
     if max_internal % 2 != 0:
@@ -2569,10 +2582,10 @@ if (len(sys.argv) > 1):
         except:
             print("Please type 'python GOPY.py help'")
     elif sys.argv[1] == "add_edge_H":
-        try:
-            add_hydrogens_to_edges(str(sys.argv[2]), str(sys.argv[3]))
-        except:
-            print("Please type 'python GOPY.py help'")
+        #try:
+        add_hydrogens_to_edges(str(sys.argv[2]), str(sys.argv[3]))
+        #except:
+            #print("Please type 'python GOPY.py help'")
     
     ### MY PART'S END ###
     
