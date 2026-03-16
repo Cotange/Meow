@@ -256,7 +256,7 @@ def count_c_neighbors(atom, atom_list):
 
 def has_hydrogen_neighbor(atom, atom_list):
     bonds = identify_bonds(atom, atom_list)
-    return any(b[0].atom_name == 'H' for b in bonds)
+    return any(b[0].atom_name == 'HG' for b in bonds)
 
 def add_edge_hydrogens(atom_list):
     """
@@ -296,12 +296,12 @@ def add_edge_hydrogens(atom_list):
 
         max_num = max(a.atom_number for a in atom_list + new_atoms) if (atom_list + new_atoms) else 0
         new_num = max_num + 1
-        h_atom = Atom(new_num, 'H', 'GGG', atom.residue_number, round(hx, 3), round(hy, 3), round(hz, 3))
+        h_atom = Atom(new_num, 'HG', 'GGG', atom.residue_number, round(hx, 3), round(hy, 3), round(hz, 3))
         new_atoms.append(h_atom)
 
     updated_list = atom_list + new_atoms
     for i, a in enumerate(updated_list):
-        a.atom_number = i
+        a.atom_number = i + 1
 
     return updated_list
 
@@ -318,6 +318,119 @@ def add_hydrogens_to_edges(init_file, filename1):
     writepdb(hydgorened_atom_list, filename1)
 
     print(f"Hydrogens were added: {len(hydgorened_atom_list) - len(atom_list)}")
+    return "done."
+
+def mass_table(elements_mass):
+
+    import pandas as pd
+    from tabulate import tabulate
+    pd.set_option('display.max_columns', None)
+    
+    df = pd.DataFrame.from_dict(elements_mass, orient='index')
+    df.columns = ['Mass of atom\n(a. m. u.)', 'Number of atoms', 'Mass of atoms\n(a. m. u.)', 'Atom fraction (%)', 'Mass fraction (%)']
+    df = df.reset_index()
+    df = df.rename(columns={'index': 'Element'})
+    df = tabulate(df, headers=df.columns.tolist(), tablefmt='grid', 
+               stralign='center', numalign='center')
+    #df = df.to_string(index=False, header=True)
+    return df
+
+def calculate_mass_fraction(init_file):
+
+    atom_list = read_in_GO(init_file)
+    elements = {
+        'C': [12, 0, 0, 0, 0],
+        'O': [16, 0, 0, 0, 0],
+        'H': [1, 0, 0, 0, 0],
+        #'N': [14, 0, 0, 0, 0],
+        'Total': ['-', 0, 0, 0, 0]
+    }
+    
+    for atom in atom_list:
+        сurrent_element = atom.atom_name[0]
+        element_mass = elements[сurrent_element][0]
+        elements[сurrent_element][1] += 1
+        elements[сurrent_element][2] += element_mass
+
+    elements['Total'][1] = sum([elements[element][1] for element in elements])
+    elements['Total'][2] = sum([elements[element][2] for element in elements])
+    
+    for element in elements:
+        elements[element][3] = round(elements[element][1] / elements['Total'][1] * 100, 2)
+        elements[element][4] = round(elements[element][2] /elements['Total'][2] * 100, 2)
+    
+    print(f"\n{mass_table(elements)}")
+    return "done."
+
+def functional_table(groups):
+
+    import pandas as pd
+    from tabulate import tabulate
+    pd.set_option('display.max_columns', None)
+    
+    df = pd.DataFrame.from_dict(groups, orient='index')
+    df.columns = ['Mass\nof group\n(a. m. u.)', 'Number\nof atoms\nper group', 'Number\nof groups', "Number\nof group's\natoms", "Mass\nof group's\natoms\n(a. m. u.)", "Atom\nfraction\nof group (%)", "Mass\nfraction\nof group (%)"]
+    df = df.reset_index()
+    df = df.rename(columns={'index': 'Group'})
+    df = tabulate(df, headers=df.columns.tolist(), tablefmt='grid', 
+               stralign='center', numalign='center')
+    #df = df.to_string(index=False, header=True)
+    return df
+
+def calculate_functional_group_fraction(init_file):
+    
+    atom_list = read_in_GO(init_file)
+    functional_groups = {
+        'Graphene_C': [12, 1, 0, 0, 0, 0, 0],
+        'Graphene_H': [1, 1, 0, 0, 0, 0, 0],
+        'O': [16, 1, 0, 0, 0, 0, 0],
+        'OH': [17, 2, 0, 0, 0, 0, 0],
+        'COOH': [45, 4, 0, 0, 0, 0, 0],
+        'Total Graphene': ['-', '-', '-', 0, 0, 0, 0],
+        'Total Functional groups': ['-', '-', '-', 0, 0, 0, 0],
+        'Total': ['-', '-', '-', 0, 0, 0, 0]
+    }
+
+    for atom in atom_list:
+        сurrent_group = atom.residue_name
+        сurrent_element = atom.atom_name[0]
+        if сurrent_group == 'GGG':
+            if сurrent_element == 'C':
+                functional_groups['Graphene_C'][2] += 1
+            if сurrent_element == 'H':
+                functional_groups['Graphene_H'][2] += 1
+        elif сurrent_group == 'H1A':
+            functional_groups['OH'][2] += 1/3
+            functional_groups['Graphene_C'][2] += 1/3
+        elif сurrent_group == 'E1A':
+            functional_groups['O'][2] += 1/3
+            functional_groups['Graphene_C'][2] += 2/3
+        elif сurrent_group == 'C1A':
+            functional_groups['COOH'][2] += 1/5
+            functional_groups['Graphene_C'][2] += 1/5
+        else:
+            print("Unknown functional group")
+            raise ValueError
+    
+    for group in list(functional_groups.keys())[:-3]:
+        functional_groups[group][2] = round(functional_groups[group][2])
+        functional_groups[group][3] = functional_groups[group][1] * functional_groups[group][2]
+        functional_groups[group][4] = functional_groups[group][0] * functional_groups[group][2]
+
+    functional_groups['Total Graphene'][3] = sum([functional_groups[group][3] for group in list(functional_groups.keys())[:2]])
+    functional_groups['Total Graphene'][4] = sum([functional_groups[group][4] for group in list(functional_groups.keys())[:2]])
+
+    functional_groups['Total Functional groups'][3] = sum([functional_groups[group][3] for group in list(functional_groups.keys())[2:-3]])
+    functional_groups['Total Functional groups'][4] = sum([functional_groups[group][4] for group in list(functional_groups.keys())[2:-3]])
+
+    functional_groups['Total'][3] = sum([functional_groups[group][3] for group in list(functional_groups.keys())[-3:-1]])
+    functional_groups['Total'][4] = sum([functional_groups[group][4] for group in list(functional_groups.keys())[-3:-1]])
+        
+    for group in functional_groups:    
+        functional_groups[group][5] = round(functional_groups[group][3] / functional_groups['Total'][3] * 100, 2)
+        functional_groups[group][6] = round(functional_groups[group][4] / functional_groups['Total'][4] * 100, 2)
+            
+    print(f"\n{functional_table(functional_groups)}")
     return "done."
 
 
@@ -2569,7 +2682,9 @@ if (len(sys.argv) > 1):
         except:
             print("Please type 'python GOPY.py help'")
 
-    ### MY PART'S START ###
+    
+### MY PART'S START ###
+
     
     elif (sys.argv[1] == "generate_PG_hexagon"):
         try:
@@ -2581,18 +2696,37 @@ if (len(sys.argv) > 1):
             generate_pristine_graphene_rectangle(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
         except:
             print("Please type 'python GOPY.py help'")
-    elif sys.argv[1] == "add_edge_H":
-        #try:
-        add_hydrogens_to_edges(str(sys.argv[2]), str(sys.argv[3]))
-        #except:
-            #print("Please type 'python GOPY.py help'")
+    elif sys.argv[1] == "add_H":
+        try:
+            add_hydrogens_to_edges(str(sys.argv[2]), str(sys.argv[3]))
+        except:
+            print("Please type 'python GOPY.py help'")
+    elif sys.argv[1] == "calculate_fractions":
+        try:
+            calculate_mass_fraction(str(sys.argv[2]))
+            calculate_functional_group_fraction(str(sys.argv[2]))
+        except:
+            print("Please type 'python GOPY.py help'")
+    elif sys.argv[1] == "generate_GO_with_H":
+        try:
+            create_GO(str(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), str(sys.argv[6]))   
+            if len(sys.argv) == 7:
+                add_hydrogens_to_edges(str(sys.argv[6]), str(sys.argv[6]))
+                calculate_mass_fraction(str(sys.argv[6]))
+                calculate_functional_group_fraction(str(sys.argv[6]))
+            elif len(sys.argv) == 8:
+                add_hydrogens_to_edges(str(sys.argv[6]), str(sys.argv[7]))
+                calculate_mass_fraction(str(sys.argv[7]))
+                calculate_functional_group_fraction(str(sys.argv[7]))
+        except:
+            print("Please type 'python GOPY.py help'")
     
-    ### MY PART'S END ###
+    
+### MY PART'S END ###
+
     
     elif (sys.argv[1] == "generate_GO"):
         try:
-            for element in sys.argv:
-                print(element)
             create_GO(str(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), str(sys.argv[6]))   
         except:
             print("Please type 'python GOPY.py help'")
